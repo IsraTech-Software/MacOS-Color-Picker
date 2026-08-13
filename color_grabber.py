@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
 import os
 import sys
+import threading
 import objc
 import webview
-from AppKit import NSStatusBar, NSVariableStatusItemLength, NSImage, NSSize
+from AppKit import (
+    NSStatusBar, 
+    NSVariableStatusItemLength, 
+    NSImage, 
+    NSSize, 
+    NSCalibratedRGBColorSpace, 
+    NSColorSampler
+)
 from Foundation import NSObject
 from PyObjCTools import AppHelper
 
@@ -20,9 +28,12 @@ class ColorGrabberController:
     def __init__(self):
         self.window = None
         self.is_visible = False
+        self.is_picking = False
         self.delegate = None
         self.status_bar = None
         self.status_item = None
+        self._sampler = None  
+        self._selection_block = None
 
     def bind_window(self, window):
         self.window = window
@@ -48,13 +59,56 @@ class ColorGrabberController:
         button.setTarget_(self.delegate)
         button.setAction_(objc.selector(self.delegate.onIconClick_, signature=b'v@:@'))
 
+    def pick_screen_color(self):
+        self.is_picking = True
+        # Do NOT hide the UI; force the window to stay open to prevent bridge collapse
+        AppHelper.callAfter(self._launch_native_sampler)
+
+    def _launch_native_sampler(self):
+        self._sampler = NSColorSampler.alloc().init()
+
+        def selection_handler(color):
+            if color:
+                try:
+                    rgb_color = color.colorUsingColorSpaceName_(NSCalibratedRGBColorSpace)
+                    if rgb_color:
+                        r = int(rgb_color.redComponent() * 255)
+                        g = int(rgb_color.greenComponent() * 255)
+                        b = int(rgb_color.blueComponent() * 255)
+                        
+                        # THE FIX: Offload JS evaluation to a detached background thread 
+                        # so the Cocoa main thread can finish tearing down the native modal without deadlocking.
+                        threading.Timer(0.1, self._dispatch_to_js, args=(r, g, b)).start()
+                        return
+                except Exception as e:
+                    print(f"Color conversion failed: {e}")
+            
+            self.is_picking = False
+            self._cleanup_sampler()
+
+        self._selection_block = selection_handler
+        self._sampler.showSamplerWithSelectionHandler_(self._selection_block)
+
+    def _dispatch_to_js(self, r, g, b):
+        if self.window:
+            self.window.evaluate_js(f"updateColor({r}, {g}, {b});")
+        self.is_picking = False
+        self._cleanup_sampler()
+
+    def _cleanup_sampler(self):
+        self._sampler = None
+        self._selection_block = None
+
     def toggle_visibility(self):
         if self.is_visible:
             self.hide_ui()
         else:
             self.show_ui()
 
-    def hide_ui(self):
+    def hide_ui(self, force=False):
+        # Crucial: Prevent the JS 'blur' event from destroying the window while picking
+        if self.is_picking and not force:
+            return
         AppHelper.callAfter(self._hide_window_instance)
 
     def _hide_window_instance(self):
@@ -90,7 +144,6 @@ def main():
     )
     
     controller.bind_window(window)
-    
 
     def on_loaded():
         AppHelper.callAfter(controller.initialize_menu_bar)
