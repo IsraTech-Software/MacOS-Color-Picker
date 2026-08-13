@@ -1,0 +1,102 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+
+jobs:
+  prepare-metadata:
+    runs-on: ubuntu-latest
+    outputs:
+      tags: ${{ steps.meta.outputs.tags }}
+      labels: ${{ steps.meta.outputs.labels }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/isratech-software/pdf-generator
+          flavor: |
+            latest=auto
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=ref,event=branch
+            type=sha,format=short
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+  build-macos:
+    name: Build macOS Application
+    runs-on: macos-latest
+    needs: prepare-metadata
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          uv pip install --system -r requirements.txt
+
+      - name: Build App with PyInstaller
+        run: |
+          pyinstaller --name "ColorGrabber" \
+                      --windowed \
+                      --noconsole \
+                      --add-data "standalone.html:." \
+                      color_grabber.py
+
+      - name: Zip Application Bundle
+        run: |
+          cd dist
+          zip -r ColorGrabber.zip ColorGrabber.app
+
+      - name: Upload macOS Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ColorGrabber-macOS
+          path: dist/ColorGrabber.zip
+          retention-days: 7
+
+  generate-docs:
+    name: Generate and Commit Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Create Docs Directory
+        run: mkdir -p docs
+
+      - name: Convert README to PDF
+        uses: Isratech-Software/markdown-to-pdf-action@v1
+        with:
+          input_file: 'README.md'
+          output_file: 'docs/README.pdf'
+          logo_file: '.github/assets/logo.png'
+          css_file: '.github/assets/styles.css'
+
+      - name: Commit and Push Generated PDF
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f docs/README.pdf
+          
+          if ! git diff-index --quiet HEAD docs/README.pdf; then
+            git commit -m "docs: auto-generate PDF from README"
+            git push
+          else
+            echo "No changes detected. Skipping commit."
+          fi
