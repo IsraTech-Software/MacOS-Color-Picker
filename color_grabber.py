@@ -3,7 +3,7 @@ import os
 import sys
 import objc
 import webview
-from AppKit import NSStatusBar, NSVariableStatusItemLength
+from AppKit import NSStatusBar, NSVariableStatusItemLength, NSImage, NSSize
 from Foundation import NSObject
 from PyObjCTools import AppHelper
 
@@ -34,9 +34,19 @@ class ColorGrabberController:
         self.status_bar = NSStatusBar.systemStatusBar()
         self.status_item = self.status_bar.statusItemWithLength_(NSVariableStatusItemLength)
         
-        self.status_item.button().setTitle_("🎨")
-        self.status_item.button().setTarget_(self.delegate)
-        self.status_item.button().setAction_(objc.selector(self.delegate.onIconClick_, signature=b'v@:@'))
+        button = self.status_item.button()
+        icon_path = resolve_resource_path(os.path.join(".", "icon.png"))
+        
+        if os.path.exists(icon_path):
+            icon_image = NSImage.alloc().initWithContentsOfFile_(icon_path)
+            icon_image.setSize_(NSSize(18, 18))
+            icon_image.setTemplate_(False)
+            button.setImage_(icon_image)
+        else:
+            button.setTitle_("🎨")
+
+        button.setTarget_(self.delegate)
+        button.setAction_(objc.selector(self.delegate.onIconClick_, signature=b'v@:@'))
 
     def toggle_visibility(self):
         if self.is_visible:

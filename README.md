@@ -48,7 +48,9 @@ To build the standalone `.app` bundle locally:
 uv run pyinstaller --name "ColorGrabber" \
             --windowed \
             --noconsole \
+            --icon ".github/assets/icon.icns" \
             --add-data "standalone.html:." \
+            --add-data ".github/assets/icon.png:." \
             color_grabber.py
 ```
 
