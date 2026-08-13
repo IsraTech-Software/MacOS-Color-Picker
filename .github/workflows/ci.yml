@@ -5,33 +5,9 @@ on:
     branches: [ main, develop ]
 
 jobs:
-  prepare-metadata:
-    runs-on: ubuntu-latest
-    outputs:
-      tags: ${{ steps.meta.outputs.tags }}
-      labels: ${{ steps.meta.outputs.labels }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/isratech-software/pdf-generator
-          flavor: |
-            latest=auto
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=ref,event=branch
-            type=sha,format=short
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-
   build-macos:
     name: Build macOS Application
     runs-on: macos-latest
-    needs: prepare-metadata
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -44,15 +20,15 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.14'
 
       - name: Install Dependencies
         run: |
-          uv pip install --system -r requirements.txt
+          uv sync
 
       - name: Build App with PyInstaller
         run: |
-          pyinstaller --name "ColorGrabber" \
+          uv run pyinstaller --name "ColorGrabber" \
                       --windowed \
                       --noconsole \
                       --add-data "standalone.html:." \

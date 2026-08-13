@@ -23,20 +23,15 @@ A lightweight, native macOS menu bar application to extract colors from images, 
 ### Local Development
 
 1. Clone the repository:
-
 ```bash
 git clone git@github.com:IsraTech-Software/MacOS-Color-Picker.git
 cd color-grabber
 ```
-
 2. Install dependencies:
-
 ```bash
 uv sync
 ```
-
 3. Run the app
-
 ```bash
 uv run python color_grabber.py
 ```
